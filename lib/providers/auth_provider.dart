@@ -1,21 +1,14 @@
-// lib/providers/auth_provider.dart  
-import 'package:flutter/foundation.dart';  
 import 'package:firebase_auth/firebase_auth.dart';  
-import 'package:cloud_firestore/cloud_firestore.dart';  
+import 'package:flutter/material.dart';  
 
 class AuthProvider with ChangeNotifier {  
   final FirebaseAuth _auth = FirebaseAuth.instance;  
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;  
-
-  bool _loading = false;  
-  String? _error;  
   User? _user;  
+  bool _isLoading = false;  
 
-  // Getters  
-  bool get loading => _loading;  
-  String? get error => _error;  
-  User? get user => _user ?? _auth.currentUser;  
-  bool get isAuthenticated => user != null;  
+  bool get isAuthenticated => _user != null;  
+  User? get user => _user;  
+  bool get isLoading => _isLoading;  
 
   AuthProvider() {  
     _auth.authStateChanges().listen((User? user) {  
@@ -24,321 +17,288 @@ class AuthProvider with ChangeNotifier {
     });  
   }  
 
-  // Register new user  
-  Future<UserCredential> register({  
-    required String name,  
-    required String email,  
-    required String password,  
+  Future<void> verifyPhoneNumber({  
+    required String phoneNumber,  
+    required Function(String) onCodeSent,  
+    required Function(String) onError,  
   }) async {  
     try {  
-      _loading = true;  
-      _error = null;  
+      _isLoading = true;  
       notifyListeners();  
 
-      // Create user with email and password  
-      final UserCredential userCredential =   
-          await _auth.createUserWithEmailAndPassword(  
-        email: email.trim(),  
-        password: password,  
+      await _auth.verifyPhoneNumber(  
+        phoneNumber: phoneNumber,  
+        verificationCompleted: (PhoneAuthCredential credential) async {  
+          await _auth.signInWithCredential(credential);  
+        },  
+        verificationFailed: (FirebaseAuthException e) {  
+          onError(e.message ?? 'An error occurred');  
+        },  
+        codeSent: (String verificationId, int? resendToken) {  
+          onCodeSent(verificationId);  
+        },  
+        codeAutoRetrievalTimeout: (String verificationId) {},  
       );  
-
-      // If user creation is successful, add user details to Firestore  
-      if (userCredential.user != null) {  
-        await _firestore.collection('users').doc(userCredential.user!.uid).set({  
-          'name': name.trim(),  
-          'email': email.trim(),  
-          'createdAt': FieldValue.serverTimestamp(),  
-          'updatedAt': FieldValue.serverTimestamp(),  
-        });  
-
-        // Update user profile  
-        await userCredential.user!.updateDisplayName(name.trim());  
-        
-        // Send email verification  
-        await userCredential.user!.sendEmailVerification();  
-      }  
-
-      return userCredential;  
-
-    } on FirebaseAuthException catch (e) {  
-      String errorMessage;  
-      
-      switch (e.code) {  
-        case 'weak-password':  
-          errorMessage = 'The password provided is too weak.';  
-          break;  
-        case 'email-already-in-use':  
-          errorMessage = 'An account already exists for that email.';  
-          break;  
-        case 'invalid-email':  
-          errorMessage = 'The email address is not valid.';  
-          break;  
-        case 'operation-not-allowed':  
-          errorMessage = 'Email/password accounts are not enabled.';  
-          break;  
-        default:  
-          errorMessage = 'An error occurred during registration. Please try again.';  
-      }  
-      
-      _error = errorMessage;  
-      throw errorMessage;  
     } catch (e) {  
-      _error = e.toString();  
-      throw _error!;  
+      onError(e.toString());  
     } finally {  
-      _loading = false;  
+      _isLoading = false;  
       notifyListeners();  
     }  
   }  
 
-  // Sign in existing user  
-  Future<UserCredential> signIn({  
-    required String email,  
-    required String password,  
+  Future<void> verifyOTP({  
+    required String verificationId,  
+    required String otp,  
+    required Function(String) onError,  
   }) async {  
     try {  
-      _loading = true;  
-      _error = null;  
+      _isLoading = true;  
       notifyListeners();  
 
-      final UserCredential userCredential =   
-          await _auth.signInWithEmailAndPassword(  
-        email: email.trim(),  
-        password: password,  
+      PhoneAuthCredential credential = PhoneAuthProvider.credential(  
+        verificationId: verificationId,  
+        smsCode: otp,  
       );  
 
-      // Update last login timestamp  
-      if (userCredential.user != null) {  
-        await _firestore.collection('users').doc(userCredential.user!.uid).update({  
-          'lastLoginAt': FieldValue.serverTimestamp(),  
-        });  
-      }  
+      await _auth.signInWithCredential(credential);  
+    } catch (e) {  
+      onError(e.toString());  
+    } finally {  
+      _isLoading = false;  
+      notifyListeners();  
+    }  
+  }  
 
-      return userCredential;  
+  Future<void> sendPasswordResetEmail({  
+    required String email,  
+    required Function(String) onSuccess,  
+    required Function(String) onError,  
+  }) async {  
+    try {  
+      _isLoading = true;  
+      notifyListeners();  
 
+      await _auth.sendPasswordResetEmail(email: email);  
+      onSuccess('Password reset email sent successfully');  
     } on FirebaseAuthException catch (e) {  
-      String errorMessage;  
-      
       switch (e.code) {  
         case 'user-not-found':  
-          errorMessage = 'No user found for that email.';  
+          onError('No user found with this email');  
+          break;  
+        case 'invalid-email':  
+          onError('Invalid email address');  
+          break;  
+        default:  
+          onError(e.message ?? 'An error occurred');  
+      }  
+    } catch (e) {  
+      onError(e.toString());  
+    } finally {  
+      _isLoading = false;  
+      notifyListeners();  
+    }  
+  }  
+
+  Future<void> signIn({  
+    required String email,  
+    required String password,  
+    required Function(String) onSuccess,  
+    required Function(String) onError,  
+  }) async {  
+    try {  
+      _isLoading = true;  
+      notifyListeners();  
+
+      await _auth.signInWithEmailAndPassword(  
+        email: email,  
+        password: password,  
+      );  
+      onSuccess('Successfully logged in');  
+    } on FirebaseAuthException catch (e) {  
+      switch (e.code) {  
+        case 'user-not-found':  
+          onError('No user found with this email');  
           break;  
         case 'wrong-password':  
-          errorMessage = 'Wrong password provided.';  
+          onError('Wrong password');  
+          break;  
+        case 'invalid-email':  
+          onError('Invalid email address');  
           break;  
         case 'user-disabled':  
-          errorMessage = 'This account has been disabled.';  
-          break;  
-        case 'invalid-email':  
-          errorMessage = 'The email address is not valid.';  
-          break;  
-        case 'too-many-requests':  
-          errorMessage = 'Too many failed login attempts. Please try again later.';  
+          onError('This account has been disabled');  
           break;  
         default:  
-          errorMessage = 'An error occurred during sign in. Please try again.';  
+          onError(e.message ?? 'An error occurred');  
       }  
-      
-      _error = errorMessage;  
-      throw errorMessage;  
     } catch (e) {  
-      _error = e.toString();  
-      throw _error!;  
+      onError(e.toString());  
     } finally {  
-      _loading = false;  
+      _isLoading = false;  
       notifyListeners();  
     }  
   }  
 
-  // Sign out  
-  Future<void> signOut() async {  
+  Future<void> register({  
+    required String email,  
+    required String password,  
+    required String name,  
+    required Function(String) onSuccess,  
+    required Function(String) onError,  
+  }) async {  
     try {  
-      _loading = true;  
-      _error = null;  
+      _isLoading = true;  
       notifyListeners();  
 
-      await _auth.signOut();  
-      _user = null;  
-
-    } catch (e) {  
-      _error = e.toString();  
-      throw _error!;  
-    } finally {  
-      _loading = false;  
-      notifyListeners();  
-    }  
-  }  
-
-  // Password reset  
-  Future<void> sendPasswordResetEmail(String email) async {  
-    try {  
-      _loading = true;  
-      _error = null;  
-      notifyListeners();  
-
-      await _auth.sendPasswordResetEmail(email: email.trim());  
-
-    } on FirebaseAuthException catch (e) {  
-      String errorMessage;  
-      
-      switch (e.code) {  
-        case 'invalid-email':  
-          errorMessage = 'The email address is not valid.';  
-          break;  
-        case 'user-not-found':  
-          errorMessage = 'No user found for that email.';  
-          break;  
-        default:  
-          errorMessage = 'An error occurred. Please try again.';  
-      }  
-      
-      _error = errorMessage;  
-      throw errorMessage;  
-    } catch (e) {  
-      _error = e.toString();  
-      throw _error!;  
-    } finally {  
-      _loading = false;  
-      notifyListeners();  
-    }  
-  }  
-
-  // Update user profile  
-  Future<void> updateProfile({String? name, String? photoURL}) async {  
-    try {  
-      _loading = true;  
-      _error = null;  
-      notifyListeners();  
-
-      if (_auth.currentUser == null) {  
-        throw 'No authenticated user found';  
-      }  
-
-      // Update Firebase Auth profile  
-      await _auth.currentUser!.updateProfile(  
-        displayName: name,  
-        photoURL: photoURL,  
+      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(  
+        email: email,  
+        password: password,  
       );  
 
-      // Update Firestore user document  
-      final updates = <String, dynamic>{  
-        'updatedAt': FieldValue.serverTimestamp(),  
-      };  
+      await userCredential.user?.updateDisplayName(name);  
+      await userCredential.user?.reload();  
       
-      if (name != null) updates['name'] = name;  
-      if (photoURL != null) updates['photoURL'] = photoURL;  
-
-      await _firestore  
-          .collection('users')  
-          .doc(_auth.currentUser!.uid)  
-          .update(updates);  
-
-    } catch (e) {  
-      _error = e.toString();  
-      throw _error!;  
-    } finally {  
-      _loading = false;  
-      notifyListeners();  
-    }  
-  }  
-
-  // Change password  
-  Future<void> changePassword(String newPassword) async {  
-    try {  
-      _loading = true;  
-      _error = null;  
-      notifyListeners();  
-
-      if (_auth.currentUser == null) {  
-        throw 'No authenticated user found';  
-      }  
-
-      await _auth.currentUser!.updatePassword(newPassword);  
-
+      onSuccess('Registration successful');  
     } on FirebaseAuthException catch (e) {  
-      String errorMessage;  
-      
       switch (e.code) {  
         case 'weak-password':  
-          errorMessage = 'The password provided is too weak.';  
+          onError('The password provided is too weak');  
           break;  
-        case 'requires-recent-login':  
-          errorMessage = 'Please sign in again to change your password.';  
+        case 'email-already-in-use':  
+          onError('An account already exists for this email');  
+          break;  
+        case 'invalid-email':  
+          onError('Invalid email address');  
           break;  
         default:  
-          errorMessage = 'An error occurred. Please try again.';  
+          onError(e.message ?? 'An error occurred');  
       }  
+    } catch (e) {  
+      onError(e.toString());  
+    } finally {  
+      _isLoading = false;  
+      notifyListeners();  
+    }  
+  }  
+
+  Future<void> changePassword({  
+    required String currentPassword,  
+    required String newPassword,  
+    required Function(String) onSuccess,  
+    required Function(String) onError,  
+  }) async {  
+    try {  
+      _isLoading = true;  
+      notifyListeners();  
+
+      final user = _auth.currentUser;  
+      if (user == null) {  
+        onError('No user is currently signed in');  
+        return;  
+      }  
+
+      AuthCredential credential = EmailAuthProvider.credential(  
+        email: user.email!,  
+        password: currentPassword,  
+      );  
+
+      await user.reauthenticateWithCredential(credential);  
+      await user.updatePassword(newPassword);  
       
-      _error = errorMessage;  
-      throw errorMessage;  
-    } catch (e) {  
-      _error = e.toString();  
-      throw _error!;  
-    } finally {  
-      _loading = false;  
-      notifyListeners();  
-    }  
-  }  
-
-  // Send email verification  
-  Future<void> sendEmailVerification() async {  
-    try {  
-      _loading = true;  
-      _error = null;  
-      notifyListeners();  
-
-      if (_auth.currentUser == null) {  
-        throw 'No authenticated user found';  
-      }  
-
-      await _auth.currentUser!.sendEmailVerification();  
-
-    } catch (e) {  
-      _error = e.toString();  
-      throw _error!;  
-    } finally {  
-      _loading = false;  
-      notifyListeners();  
-    }  
-  }  
-
-  // Delete account  
-  Future<void> deleteAccount() async {  
-    try {  
-      _loading = true;  
-      _error = null;  
-      notifyListeners();  
-
-      if (_auth.currentUser == null) {  
-        throw 'No authenticated user found';  
-      }  
-
-      // Delete user data from Firestore  
-      await _firestore.collection('users').doc(_auth.currentUser!.uid).delete();  
-
-      // Delete user account  
-      await _auth.currentUser!.delete();  
-      _user = null;  
-
+      onSuccess('Password updated successfully');  
     } on FirebaseAuthException catch (e) {  
-      String errorMessage;  
-      
       switch (e.code) {  
+        case 'wrong-password':  
+          onError('Current password is incorrect');  
+          break;  
+        case 'weak-password':  
+          onError('New password is too weak');  
+          break;  
         case 'requires-recent-login':  
-          errorMessage = 'Please sign in again to delete your account.';  
+          onError('Please log in again before changing your password');  
           break;  
         default:  
-          errorMessage = 'An error occurred. Please try again.';  
+          onError(e.message ?? 'An error occurred');  
       }  
-      
-      _error = errorMessage;  
-      throw errorMessage;  
     } catch (e) {  
-      _error = e.toString();  
-      throw _error!;  
+      onError(e.toString());  
     } finally {  
-      _loading = false;  
+      _isLoading = false;  
       notifyListeners();  
     }  
+  }  
+
+  Future<void> deleteAccount({  
+    required String password,  
+    required Function(String) onSuccess,  
+    required Function(String) onError,  
+  }) async {  
+    try {  
+      _isLoading = true;  
+      notifyListeners();  
+
+      final user = _auth.currentUser;  
+      if (user == null) {  
+        onError('No user is currently signed in');  
+        return;  
+      }  
+
+      AuthCredential credential = EmailAuthProvider.credential(  
+        email: user.email!,  
+        password: password,  
+      );  
+
+      await user.reauthenticateWithCredential(credential);  
+      await user.delete();  
+      
+      onSuccess('Account deleted successfully');  
+    } on FirebaseAuthException catch (e) {  
+      switch (e.code) {  
+        case 'wrong-password':  
+          onError('Password is incorrect');  
+          break;  
+        case 'requires-recent-login':  
+          onError('Please log in again before deleting your account');  
+          break;  
+        default:  
+          onError(e.message ?? 'An error occurred');  
+      }  
+    } catch (e) {  
+      onError(e.toString());  
+    } finally {  
+      _isLoading = false;  
+      notifyListeners();  
+    }  
+  }  
+
+  Future<void> sendEmailVerification({  
+    required Function(String) onSuccess,  
+    required Function(String) onError,  
+  }) async {  
+    try {  
+      _isLoading = true;  
+      notifyListeners();  
+
+      final user = _auth.currentUser;  
+      if (user == null) {  
+        onError('No user is currently signed in');  
+        return;  
+      }  
+
+      await user.sendEmailVerification();  
+      onSuccess('Verification email sent successfully');  
+    } on FirebaseAuthException catch (e) {  
+      onError(e.message ?? 'An error occurred');  
+    } catch (e) {  
+      onError(e.toString());  
+    } finally {  
+      _isLoading = false;  
+      notifyListeners();  
+    }  
+  }  
+
+  Future<void> signOut() async {  
+    await _auth.signOut();  
   }  
 }

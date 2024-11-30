@@ -1,304 +1,286 @@
-// lib/screens/profile_screen.dart  
 import 'package:flutter/material.dart';  
 import 'package:provider/provider.dart';  
 import '../providers/auth_provider.dart';  
 
-class ProfileScreen extends StatelessWidget {  
-  static const String routeName = '/profile';  
+class ProfileScreen extends StatefulWidget {  
+  static const routeName = '/profile';  
 
   const ProfileScreen({super.key});  
 
-  // Add change password dialog  
-  void _showChangePasswordDialog(BuildContext context) {  
-    final TextEditingController passwordController = TextEditingController();  
-    
-    showDialog(  
-      context: context,  
-      builder: (ctx) => AlertDialog(  
-        title: const Text('Change Password'),  
-        content: TextField(  
-          controller: passwordController,  
-          decoration: const InputDecoration(  
-            labelText: 'New Password',  
-          ),  
-          obscureText: true,  
-        ),  
-        actions: [  
-          TextButton(  
-            onPressed: () {  
-              Navigator.of(ctx).pop();  
-            },  
-            child: const Text('Cancel'),  
-          ),  
-          FilledButton(  
-            onPressed: () async {  
-              try {  
-                await Provider.of<AuthProvider>(context, listen: false)  
-                    .changePassword(passwordController.text);  
-                if (context.mounted) {  
-                  Navigator.of(ctx).pop();  
-                  ScaffoldMessenger.of(context).showSnackBar(  
-                    const SnackBar(  
-                      content: Text('Password updated successfully!'),  
-                    ),  
-                  );  
-                }  
-              } catch (error) {  
-                if (context.mounted) {  
-                  Navigator.of(ctx).pop();  
-                  ScaffoldMessenger.of(context).showSnackBar(  
-                    SnackBar(  
-                      content: Text(error.toString()),  
-                      backgroundColor: Theme.of(context).colorScheme.error,  
-                    ),  
-                  );  
-                }  
-              }  
-            },  
-            child: const Text('Update'),  
-          ),  
-        ],  
-      ),  
-    );  
-  }  
+  @override  
+  State<ProfileScreen> createState() => _ProfileScreenState();  
+}  
 
-  // Add delete account dialog  
-  void _showDeleteAccountDialog(BuildContext context) {  
-    showDialog(  
-      context: context,  
-      builder: (ctx) => AlertDialog(  
-        title: const Text('Delete Account'),  
-        content: const Text(  
-          'Are you sure you want to delete your account? This action cannot be undone.',  
-        ),  
-        actions: [  
-          TextButton(  
-            onPressed: () {  
-              Navigator.of(ctx).pop();  
-            },  
-            child: const Text('Cancel'),  
-          ),  
-          FilledButton(  
-            onPressed: () async {  
-              try {  
-                await Provider.of<AuthProvider>(context, listen: false)  
-                    .deleteAccount();  
-                if (context.mounted) {  
-                  Navigator.of(ctx).pop();  
-                  Navigator.of(context).pushReplacementNamed('/');  
-                }  
-              } catch (error) {  
-                if (context.mounted) {  
-                  Navigator.of(ctx).pop();  
-                  ScaffoldMessenger.of(context).showSnackBar(  
-                    SnackBar(  
-                      content: Text(error.toString()),  
-                      backgroundColor: Theme.of(context).colorScheme.error,  
+class _ProfileScreenState extends State<ProfileScreen> {  
+  final _currentPasswordController = TextEditingController();  
+  final _newPasswordController = TextEditingController();  
+  final _confirmPasswordController = TextEditingController();  
+  final _deleteAccountPasswordController = TextEditingController();  
+
+  @override  
+  Widget build(BuildContext context) {  
+    final auth = Provider.of<AuthProvider>(context);  
+    final user = auth.user;  
+
+    if (user == null) {  
+      return const Center(child: Text('No user logged in'));  
+    }  
+
+    return Scaffold(  
+      appBar: AppBar(  
+        title: const Text('Profile'),  
+      ),  
+      body: SingleChildScrollView(  
+        padding: const EdgeInsets.all(16.0),  
+        child: Column(  
+          crossAxisAlignment: CrossAxisAlignment.start,  
+          children: [  
+            Card(  
+              child: Padding(  
+                padding: const EdgeInsets.all(16.0),  
+                child: Column(  
+                  crossAxisAlignment: CrossAxisAlignment.start,  
+                  children: [  
+                    Text(  
+                      'Name: ${user.displayName ?? 'Not set'}',  
+                      style: Theme.of(context).textTheme.titleMedium,  
                     ),  
-                  );  
-                }  
-              }  
-            },  
-            style: FilledButton.styleFrom(  
-              backgroundColor: Theme.of(context).colorScheme.error,  
+                    const SizedBox(height: 8),  
+                    Text(  
+                      'Email: ${user.email}',  
+                      style: Theme.of(context).textTheme.titleMedium,  
+                    ),  
+                    const SizedBox(height: 8),  
+                    Row(  
+                      children: [  
+                        Icon(  
+                          user.emailVerified  
+                              ? Icons.verified  
+                              : Icons.warning,  
+                          color: user.emailVerified  
+                              ? Colors.green  
+                              : Colors.orange,  
+                        ),  
+                        const SizedBox(width: 8),  
+                        Text(  
+                          user.emailVerified  
+                              ? 'Email verified'  
+                              : 'Email not verified',  
+                          style: TextStyle(  
+                            color: user.emailVerified  
+                                ? Colors.green  
+                                : Colors.orange,  
+                          ),  
+                        ),  
+                        if (!user.emailVerified) ...[  
+                          const SizedBox(width: 8),  
+                          TextButton(  
+                            onPressed: () {  
+                              auth.sendEmailVerification(  
+                                onSuccess: (message) {  
+                                  ScaffoldMessenger.of(context).showSnackBar(  
+                                    SnackBar(content: Text(message)),  
+                                  );  
+                                },  
+                                onError: (error) {  
+                                  ScaffoldMessenger.of(context).showSnackBar(  
+                                    SnackBar(  
+                                      content: Text(error),  
+                                      backgroundColor: Colors.red,  
+                                    ),  
+                                  );  
+                                },  
+                              );  
+                            },  
+                            child: const Text('Verify now'),  
+                          ),  
+                        ],  
+                      ],  
+                    ),  
+                  ],  
+                ),  
+              ),  
             ),  
-            child: const Text('Delete'),  
-          ),  
-        ],  
+            const SizedBox(height: 24),  
+            Text(  
+              'Change Password',  
+              style: Theme.of(context).textTheme.titleLarge,  
+            ),  
+            const SizedBox(height: 16),  
+            TextFormField(  
+              controller: _currentPasswordController,  
+              decoration: const InputDecoration(  
+                labelText: 'Current Password',  
+                border: OutlineInputBorder(),  
+              ),  
+              obscureText: true,  
+            ),  
+            const SizedBox(height: 16),  
+            TextFormField(  
+              controller: _newPasswordController,  
+              decoration: const InputDecoration(  
+                labelText: 'New Password',  
+                border: OutlineInputBorder(),  
+              ),  
+              obscureText: true,  
+            ),  
+            const SizedBox(height: 16),  
+            TextFormField(  
+              controller: _confirmPasswordController,  
+              decoration: const InputDecoration(  
+                labelText: 'Confirm New Password',  
+                border: OutlineInputBorder(),  
+              ),  
+              obscureText: true,  
+            ),  
+            const SizedBox(height: 16),  
+            SizedBox(  
+              width: double.infinity,  
+              child: FilledButton(  
+                onPressed: auth.isLoading  
+                    ? null  
+                    : () {  
+                        if (_newPasswordController.text !=  
+                            _confirmPasswordController.text) {  
+                          ScaffoldMessenger.of(context).showSnackBar(  
+                            const SnackBar(  
+                              content: Text('New passwords do not match'),  
+                              backgroundColor: Colors.red,  
+                            ),  
+                          );  
+                          return;  
+                        }  
+                        auth.changePassword(  
+                          currentPassword: _currentPasswordController.text,  
+                          newPassword: _newPasswordController.text,  
+                          onSuccess: (message) {  
+                            ScaffoldMessenger.of(context).showSnackBar(  
+                              SnackBar(content: Text(message)),  
+                            );  
+                            _currentPasswordController.clear();  
+                            _newPasswordController.clear();  
+                            _confirmPasswordController.clear();  
+                          },  
+                          onError: (error) {  
+                            ScaffoldMessenger.of(context).showSnackBar(  
+                              SnackBar(  
+                                content: Text(error),  
+                                backgroundColor: Colors.red,  
+                              ),  
+                            );  
+                          },  
+                        );  
+                      },  
+                child: auth.isLoading  
+                    ? const SizedBox(  
+                        width: 20,  
+                        height: 20,  
+                        child: CircularProgressIndicator(  
+                          strokeWidth: 2,  
+                          color: Colors.white,  
+                        ),  
+                      )  
+                    : const Text('Update Password'),  
+              ),  
+            ),  
+            const SizedBox(height: 24),  
+            Text(  
+              'Delete Account',  
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(  
+                    color: Colors.red,  
+                  ),  
+            ),  
+            const SizedBox(height: 16),  
+            TextFormField(  
+              controller: _deleteAccountPasswordController,  
+              decoration: const InputDecoration(  
+                labelText: 'Confirm Password',  
+                border: OutlineInputBorder(),  
+              ),  
+              obscureText: true,  
+            ),  
+            const SizedBox(height: 16),  
+            SizedBox(  
+              width: double.infinity,  
+              child: FilledButton(  
+                onPressed: auth.isLoading  
+                    ? null  
+                    : () {  
+                        showDialog(  
+                          context: context,  
+                          builder: (ctx) => AlertDialog(  
+                            title: const Text('Delete Account'),  
+                            content: const Text(  
+                              'Are you sure you want to delete your account? This action cannot be undone.',  
+                            ),  
+                            actions: [  
+                              TextButton(  
+                                onPressed: () {  
+                                  Navigator.of(ctx).pop();  
+                                },  
+                                child: const Text('Cancel'),  
+                              ),  
+                              TextButton(  
+                                onPressed: () {  
+                                  Navigator.of(ctx).pop();  
+                                  auth.deleteAccount(  
+                                    password:  
+                                        _deleteAccountPasswordController.text,  
+                                    onSuccess: (message) {  
+                                      ScaffoldMessenger.of(context)  
+                                          .showSnackBar(  
+                                        SnackBar(content: Text(message)),  
+                                      );  
+                                      Navigator.of(context)  
+                                          .pushReplacementNamed('/');  
+                                    },  
+                                    onError: (error) {  
+                                      ScaffoldMessenger.of(context)  
+                                          .showSnackBar(  
+                                        SnackBar(  
+                                          content: Text(error),  
+                                          backgroundColor: Colors.red,  
+                                        ),  
+                                      );  
+                                    },  
+                                  );  
+                                },  
+                                child: const Text(  
+                                  'Delete',  
+                                  style: TextStyle(color: Colors.red),  
+                                ),  
+                              ),  
+                            ],  
+                          ),  
+                        );  
+                      },  
+                style: FilledButton.styleFrom(  
+                  backgroundColor: Colors.red,  
+                ),  
+                child: auth.isLoading  
+                    ? const SizedBox(  
+                        width: 20,  
+                        height: 20,  
+                        child: CircularProgressIndicator(  
+                          strokeWidth: 2,  
+                          color: Colors.white,  
+                        ),  
+                      )  
+                    : const Text('Delete Account'),  
+              ),  
+            ),  
+          ],  
+        ),  
       ),  
     );  
   }  
 
   @override  
-  Widget build(BuildContext context) {  
-    return Scaffold(  
-      appBar: AppBar(  
-        title: const Text('My Profile'),  
-      ),  
-      body: Consumer<AuthProvider>(  
-        builder: (context, auth, _) => auth.loading  
-            ? const Center(child: CircularProgressIndicator())  
-            : ListView(  
-                padding: const EdgeInsets.all(16),  
-                children: [  
-                  // Profile Header  
-                  Card(  
-                    child: Padding(  
-                      padding: const EdgeInsets.all(16),  
-                      child: Column(  
-                        children: [  
-                          CircleAvatar(  
-                            radius: 50,  
-                            backgroundColor:  
-                                Theme.of(context).colorScheme.primary,  
-                            backgroundImage: auth.user?.photoURL != null  
-                                ? NetworkImage(auth.user!.photoURL!)  
-                                : null,  
-                            child: auth.user?.photoURL == null  
-                                ? const Icon(  
-                                    Icons.person,  
-                                    size: 50,  
-                                    color: Colors.white,  
-                                  )  
-                                : null,  
-                          ),  
-                          const SizedBox(height: 16),  
-                          Text(  
-                            auth.user?.displayName ?? 'User',  
-                            style: Theme.of(context).textTheme.titleLarge,  
-                          ),  
-                          Text(  
-                            auth.user?.email ?? '',  
-                            style: Theme.of(context).textTheme.bodyMedium,  
-                          ),  
-                          if (auth.user != null && !auth.user!.emailVerified)  
-                            TextButton.icon(  
-                              icon: const Icon(Icons.error_outline),  
-                              label: const Text('Verify Email'),  
-                              onPressed: () async {  
-                                try {  
-                                  await auth.sendEmailVerification();  
-                                  if (context.mounted) {  
-                                    ScaffoldMessenger.of(context).showSnackBar(  
-                                      const SnackBar(  
-                                        content: Text('Verification email sent!'),  
-                                      ),  
-                                    );  
-                                  }  
-                                } catch (error) {  
-                                  if (context.mounted) {  
-                                    ScaffoldMessenger.of(context).showSnackBar(  
-                                      SnackBar(  
-                                        content: Text(error.toString()),  
-                                        backgroundColor:  
-                                            Theme.of(context).colorScheme.error,  
-                                      ),  
-                                    );  
-                                  }  
-                                }  
-                              },  
-                            ),  
-                        ],  
-                      ),  
-                    ),  
-                  ),  
-
-                  const SizedBox(height: 16),  
-
-                  // Account Settings  
-                  Card(  
-                    child: Column(  
-                      children: [  
-                        ListTile(  
-                          leading: const Icon(Icons.person_outline),  
-                          title: const Text('Edit Profile'),  
-                          trailing: const Icon(Icons.chevron_right),  
-                          onTap: () {  
-                            // Navigate to edit profile screen  
-                          },  
-                        ),  
-                        const Divider(),  
-                        ListTile(  
-                          leading: const Icon(Icons.lock_outline),  
-                          title: const Text('Change Password'),  
-                          trailing: const Icon(Icons.chevron_right),  
-                          onTap: () {  
-                            _showChangePasswordDialog(context);  
-                          },  
-                        ),  
-                      ],  
-                    ),  
-                  ),  
-
-                  const SizedBox(height: 16),  
-
-                  // App Settings  
-                  Card(  
-                    child: Column(  
-                      children: [  
-                        ListTile(  
-                          leading: const Icon(Icons.notifications_outlined),  
-                          title: const Text('Notifications'),  
-                          trailing: Switch(  
-                            value: true, // Replace with actual notification setting  
-                            onChanged: (value) {  
-                              // Implement notification toggle  
-                            },  
-                          ),  
-                        ),  
-                        const Divider(),  
-                        ListTile(  
-                          leading: const Icon(Icons.dark_mode_outlined),  
-                          title: const Text('Dark Mode'),  
-                          trailing: Switch(  
-                            value: Theme.of(context).brightness == Brightness.dark,  
-                            onChanged: (value) {  
-                              // Implement theme toggle  
-                            },  
-                          ),  
-                        ),  
-                      ],  
-                    ),  
-                  ),  
-
-                  const SizedBox(height: 16),  
-
-                  // Danger Zone  
-                  Card(  
-                    color: Theme.of(context).colorScheme.errorContainer,  
-                    child: Column(  
-                      children: [  
-                        ListTile(  
-                          leading: Icon(  
-                            Icons.delete_outline,  
-                            color: Theme.of(context).colorScheme.error,  
-                          ),  
-                          title: Text(  
-                            'Delete Account',  
-                            style: TextStyle(  
-                              color: Theme.of(context).colorScheme.error,  
-                            ),  
-                          ),  
-                          onTap: () {  
-                            _showDeleteAccountDialog(context);  
-                          },  
-                        ),  
-                      ],  
-                    ),  
-                  ),  
-
-                  const SizedBox(height: 16),  
-
-                  // Sign Out Button  
-                  FilledButton(  
-                    onPressed: () async {  
-                      try {  
-                        await auth.signOut();  
-                        if (context.mounted) {  
-                          Navigator.of(context).pushReplacementNamed('/');  
-                        }  
-                      } catch (error) {  
-                        if (context.mounted) {  
-                          ScaffoldMessenger.of(context).showSnackBar(  
-                            SnackBar(  
-                              content: Text(error.toString()),  
-                              backgroundColor:  
-                                  Theme.of(context).colorScheme.error,  
-                            ),  
-                          );  
-                        }  
-                      }  
-                    },  
-                    style: FilledButton.styleFrom(  
-                      backgroundColor: Theme.of(context).colorScheme.error,  
-                    ),  
-                    child: const Text('Sign Out'),  
-                  ),  
-
-                  const SizedBox(height: 32),  
-                ],  
-              ),  
-      ),  
-    );  
+  void dispose() {  
+    _currentPasswordController.dispose();  
+    _newPasswordController.dispose();  
+    _confirmPasswordController.dispose();  
+    _deleteAccountPasswordController.dispose();  
+    super.dispose();  
   }  
 }
